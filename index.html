@@ -495,28 +495,53 @@ function renderBanner() {
 function renderIndex() {
   const docsEl = document.getElementById("docs");
   const subEl = document.getElementById("docs-sub");
-  const samples = state.history?.samples?.filter((s) => s.docs) || [];
-  const latest = state.docs || samples[samples.length - 1]?.docs;
+  const samples = (state.history?.samples || []).filter((s) => s.docs);
+
+  /*
+    The counter itself is read live on every visit, straight from the
+    same public call that proves the read path is serving, so the big
+    number is never older than this page load.
+
+    Growth is a different thing: it needs a second point in time, and a
+    live read only ever gives one. That point comes from the recorded
+    history, so the line says how far back it actually reaches instead
+    of always claiming a day. It prefers a reading from 24 hours ago and
+    falls back to the oldest one we hold.
+  */
+  const live = state.docs;
+  const lastSample = samples[samples.length - 1];
+  const latest = live || lastSample?.docs;
+  const latestAt = live ? Date.now() : lastSample ? Date.parse(lastSample.t) : null;
+
   if (!latest) {
     docsEl.textContent = "";
     subEl.textContent = "The live counter could not be read just now.";
     return;
   }
   docsEl.textContent = fmt.format(latest);
-  // 48 samples back is 24 hours at the recorder's cadence.
-  const dayAgo = samples.length > 48 ? samples[samples.length - 49].docs : samples[0]?.docs;
-  const first = samples[0];
-  if (dayAgo && latest > dayAgo && samples.length > 4) {
-    const hours = (new Date(samples[samples.length - 1].t) - new Date(samples[Math.max(0, samples.length - 49)].t)) / 3.6e6;
+
+  const dayAgo = Date.now() - 24 * 3600e3;
+  const withinDay = samples.filter((s) => Date.parse(s.t) >= dayAgo);
+  const base = (withinDay.length ? withinDay : samples)[0];
+  const spanMin = base && latestAt ? (latestAt - Date.parse(base.t)) / 60000 : 0;
+  const added = base ? latest - base.docs : 0;
+
+  // Fifteen minutes is the floor: a shorter window turns normal crawl
+  // jitter into a headline rate.
+  if (spanMin >= 15 && added > 0) {
     subEl.textContent =
-      `documents indexed · ${fmt.format(latest - dayAgo)} added in the last ` +
-      `${hours >= 23 ? "24 hours" : Math.round(hours) + " hours"}`;
-  } else if (first) {
-    subEl.textContent = "documents indexed · growth appears once a day of samples is recorded";
+      `documents indexed · ${fmt.format(added)} added in the last ${humanSpan(spanMin)}`;
   } else {
-    subEl.textContent = "documents indexed";
+    subEl.textContent = "documents indexed · the growth line appears after the next check";
   }
   renderSpark(samples.map((s) => s.docs));
+}
+
+function humanSpan(minutes) {
+  if (minutes >= 23 * 60) return "24 hours";
+  if (minutes >= 110) return Math.round(minutes / 60) + " hours";
+  if (minutes >= 50) return "hour";
+  return Math.round(minutes) + " minutes";
 }
 
 function renderSpark(values) {
