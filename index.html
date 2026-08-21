@@ -152,9 +152,12 @@
   <div class="card" id="incidents"><p class="empty">Loading…</p></div>
 
   <footer>
-    Component state is checked live from your own browser against each
-    service directly, so this page cannot report a service as healthy
-    when your network cannot reach it. Uptime bars and the response
+    Most component states are checked live from your own browser against
+    each service directly, so this page cannot report a service as
+    healthy when your network cannot reach it. The MCP endpoint is the
+    exception: a browser cannot check it without logging an error for a
+    reply that is actually correct, so it is reported from the external
+    probe instead, with the time of that check shown. Uptime bars and the response
     history come from an independent probe that runs every 30 minutes
     outside our infrastructure, and days carrying a recorded incident
     are counted from that incident rather than from the probe, because
@@ -211,8 +214,17 @@ const COMPONENTS = [
     id: "mcp",
     name: "MCP endpoint",
     where: "api.lyrenth.com/mcp",
-    url: "https://api.lyrenth.com/mcp",
-    cors: false,
+    /*
+      Checked by the recorder only, never from the browser. A GET here
+      correctly answers 405: the MCP transport reserves GET for a
+      server-to-client stream we do not offer, and says so with an
+      Allow: POST header. That is a healthy answer, but a browser logs
+      every non-2xx as a failed resource, so probing it from this page
+      printed a red error in the console of our own status page. The
+      recorder reads the same 405 as healthy and prints nothing.
+    */
+    okCodes: [200, 400, 405],
+    recordedOnly: true,
   },
 ];
 
@@ -273,6 +285,27 @@ async function checkLive(c) {
 }
 
 /* ---------- history ---------- */
+
+/*
+  State for a component the browser does not probe. The sample is at
+  most one recorder interval old, and the row says so rather than
+  implying it was checked this second.
+*/
+function recordedState(c) {
+  const samples = state.history?.samples || [];
+  const last = samples[samples.length - 1];
+  const row = last?.r?.[c.id];
+  if (!row) return { level: "", word: "awaiting first check", ms: null };
+  const [code, ms] = row;
+  const ok = (c.okCodes || [200]).includes(code);
+  const ageMin = Math.max(0, Math.round((Date.now() - Date.parse(last.t)) / 60000));
+  const age = ageMin < 1 ? "just now" : ageMin + " min ago";
+  return {
+    level: ok ? "ok" : "down",
+    word: (ok ? "operational" : "not serving (" + code + ")") + " · checked " + age,
+    ms: null,
+  };
+}
 
 /*
   A day is drawn and counted from the BEST information we have about it,
@@ -409,7 +442,7 @@ function renderComponents() {
   const box = document.getElementById("components");
   box.innerHTML = "";
   for (const c of COMPONENTS) {
-    const live = state.live[c.id];
+    const live = c.recordedOnly ? recordedState(c) : state.live[c.id];
     const level = live ? live.level : "";
     const word = live ? live.word : "checking…";
     const ms = live && live.ms !== null ? ` · ${live.ms}ms` : "";
@@ -430,8 +463,16 @@ function renderComponents() {
 }
 
 function renderBanner() {
-  const levels = COMPONENTS.map((c) => state.live[c.id]?.level).filter(Boolean);
-  if (levels.length < COMPONENTS.length) return;
+  const probed = COMPONENTS.filter((c) => !c.recordedOnly);
+  const levels = probed.map((c) => state.live[c.id]?.level).filter(Boolean);
+  if (levels.length < probed.length) return;
+  // A recorded row still counts toward the headline when we have a
+  // sample for it: a failing component is a failing component whether
+  // this browser or the recorder found it.
+  for (const c of COMPONENTS.filter((x) => x.recordedOnly)) {
+    const r = recordedState(c);
+    if (r.level) levels.push(r.level);
+  }
   const banner = document.getElementById("banner");
   const title = document.getElementById("banner-title");
   const sub = document.getElementById("banner-sub");
@@ -562,7 +603,7 @@ function renderIncidents(incidents) {
 
   renderComponents();
   await Promise.all(
-    COMPONENTS.map(async (c) => {
+    COMPONENTS.filter((c) => !c.recordedOnly).map(async (c) => {
       state.live[c.id] = await checkLive(c);
       renderComponents();
       renderBanner();
