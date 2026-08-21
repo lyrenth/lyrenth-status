@@ -4,6 +4,14 @@
       "date": "2026-08-21",
       "title": "API unavailable: network outage at our hosting provider's Vienna location",
       "status": "resolved",
+      "severity": "major",
+      "started": "2026-08-21T12:55:00Z",
+      "resolved": "2026-08-21T16:41:00Z",
+      "components": [
+        "api",
+        "reads",
+        "mcp"
+      ],
       "updates": [
         {
           "time": "2026-08-21 18:41 CEST",

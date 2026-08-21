@@ -69,8 +69,8 @@
   .comp.down .dot { background:var(--down); } .comp.down .state { color:var(--down); }
 
   /* Uptime bars: one slot per recorded day, oldest left. */
-  .bars { display:flex; gap:2px; margin-top:12px; height:26px; align-items:stretch; }
-  .bars i { flex:1 1 0; min-width:2px; border-radius:2px; background:var(--none); }
+  .bars { display:flex; gap:1.5px; margin-top:12px; height:26px; align-items:stretch; }
+  .bars i { flex:1 1 0; min-width:1px; border-radius:1.5px; background:var(--none); }
   .bars i.ok { background:var(--ok); }
   .bars i.part { background:var(--warn); }
   .bars i.down { background:var(--down); }
@@ -137,7 +137,11 @@
     service directly, so this page cannot report a service as healthy
     when your network cannot reach it. Uptime bars and the response
     history come from an independent probe that runs every 30 minutes
-    outside our infrastructure. Incident notes are written by hand.
+    outside our infrastructure, and days carrying a recorded incident
+    are counted from that incident rather than from the probe, because
+    the probe cannot report an outage it was not running for. A day we
+    have no information about is drawn grey and left out of the
+    percentage. Incident notes are written by hand.
     <br />
     Questions: <a href="https://www.lyrenth.com/contact">lyrenth.com/contact</a>
     &middot; <a href="rss.xml">RSS feed</a>
@@ -250,38 +254,131 @@ async function checkLive(c) {
 
 /* ---------- history ---------- */
 
-function dayClass(row) {
-  if (!row) return "";
-  const [checks, fails] = row;
-  if (!checks) return "";
-  if (!fails) return "ok";
-  return fails / checks > 0.25 ? "down" : "part";
-}
+/*
+  A day is drawn and counted from the BEST information we have about it,
+  in this order: a known incident, then recorded samples, then nothing.
 
-function uptimePct(id) {
-  const days = state.history?.days || {};
-  let checks = 0, fails = 0;
-  for (const d of Object.values(days)) {
-    const row = d[id];
-    if (row) { checks += row[0]; fails += row[1]; }
+  The incident record wins because it is the honest source. Recording
+  began on 21 August, hours after that day's outage had been resolved,
+  so the samples for that day contain no failures at all and the first
+  version of this page printed "100% measured" over a day we were down
+  for nearly four hours. Samples can only ever report what they were
+  present for; an incident is written by a human who was there.
+
+  So: a day carrying an incident is counted from the incident's own
+  start and end against the full day, and a day with only samples is
+  counted from those samples, each standing for the interval until the
+  next one. A day we know nothing about is drawn grey and left out of
+  the percentage entirely, rather than assumed good.
+*/
+const SAMPLE_MINUTES = 30;
+const DAY_MINUTES = 1440;
+
+function incidentDowntime(dateStr, componentId) {
+  // Minutes of that UTC day the component was down, per the incidents.
+  const dayStart = Date.parse(dateStr + "T00:00:00Z");
+  const dayEnd = dayStart + DAY_MINUTES * 60000;
+  let worst = 0;
+  let severity = null;
+  for (const inc of state.incidents || []) {
+    const affects = inc.components ? inc.components.includes(componentId) : true;
+    if (!affects || !inc.started) continue;
+    const from = Date.parse(inc.started);
+    const to = inc.resolved ? Date.parse(inc.resolved) : Date.now();
+    if (isNaN(from) || isNaN(to)) continue;
+    const overlap = Math.min(to, dayEnd) - Math.max(from, dayStart);
+    if (overlap > 0) {
+      worst = Math.max(worst, overlap / 60000);
+      if (inc.severity === "major" || !severity) severity = inc.severity || "major";
+    }
   }
-  if (!checks) return null;
-  return ((1 - fails / checks) * 100).toFixed(checks > 500 ? 2 : 1);
+  return { minutes: worst, severity };
 }
 
-function renderBars(id) {
-  const days = state.history?.days;
-  if (!days || !Object.keys(days).length) {
+// Returns {down, window} in minutes, or null when the day is unknown.
+function dayFacts(dateStr, componentId) {
+  const hit = incidentDowntime(dateStr, componentId);
+  if (hit.minutes > 0) {
+    return { down: hit.minutes, window: DAY_MINUTES, incident: true, severity: hit.severity };
+  }
+  const row = state.history?.days?.[dateStr]?.[componentId];
+  if (!row || !row[0]) return null;
+  const [checks, fails] = row;
+  return { down: fails * SAMPLE_MINUTES, window: checks * SAMPLE_MINUTES, incident: false };
+}
+
+function dayClass(facts) {
+  if (!facts) return "";
+  if (!facts.down) return "ok";
+  // A day carrying a major incident is red however small a slice of the
+  // day it covered: serving nothing for four hours is not a yellow day.
+  if (facts.incident) return facts.severity === "degraded" ? "part" : "down";
+  return facts.down / facts.window > 0.25 ? "down" : "part";
+}
+
+function knownDates() {
+  const dates = new Set(Object.keys(state.history?.days || {}));
+  for (const inc of state.incidents || []) if (inc.date) dates.add(inc.date);
+  return [...dates].sort();
+}
+
+/*
+  The bar is always a fixed 90-day window ending today, oldest left,
+  with days we know nothing about drawn grey. Rendering only the days we
+  have would make a single recorded day fill the whole width, which
+  reads as "always been this way" rather than "we started yesterday".
+  Ninety grey slots with one coloured one at the right tells the truth
+  at a glance.
+*/
+const WINDOW_DAYS = 90;
+
+function windowDates() {
+  const out = [];
+  const today = new Date();
+  for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function uptimePct(componentId) {
+  let down = 0, window = 0;
+  for (const d of knownDates()) {
+    const f = dayFacts(d, componentId);
+    if (!f) continue;
+    down += f.down;
+    window += f.window;
+  }
+  if (!window) return null;
+  return ((1 - down / window) * 100).toFixed(2);
+}
+
+function renderBars(componentId) {
+  const known = knownDates();
+  if (!known.length) {
     return '<div class="scale"><span>Uptime history starts collecting with the next check.</span></div>';
   }
-  const dates = Object.keys(days).sort();
-  const slots = dates.map((d) => `<i class="${dayClass(days[d][id])}" title="${d}"></i>`).join("");
-  const pct = uptimePct(id);
-  const since = dates[0];
+  const dates = windowDates();
+  const slots = dates
+    .map((d) => {
+      const f = dayFacts(d, componentId);
+      const label = !f
+        ? d + ": no data"
+        : f.incident
+          ? d + ": incident, " + Math.round(f.down) + " min down"
+          : f.down
+            ? d + ": " + Math.round(f.down) + " min down of " + f.window + " measured"
+            : d + ": no failures in " + f.window + " min measured";
+      return `<i class="${dayClass(f)}" title="${label}"></i>`;
+    })
+    .join("");
+  const pct = uptimePct(componentId);
+  const measured = known.length === 1 ? "1 day recorded" : known.length + " days recorded";
   return (
     `<div class="bars">${slots}</div>` +
-    `<div class="scale"><span>${dates.length === 1 ? "today" : since}</span>` +
-    `<span>${pct === null ? "" : `<b>${pct}%</b> uptime, measured`}</span>` +
+    `<div class="scale"><span>90 days</span>` +
+    `<span>${pct === null ? "" : `<b>${pct}%</b> uptime, ${measured}`}</span>` +
     `<span>now</span></div>`
   );
 }
@@ -400,7 +497,13 @@ function renderIncidents(incidents) {
 (async function () {
   fetch("incidents.json", { cache: "no-store" })
     .then((r) => r.json())
-    .then((d) => renderIncidents(d.incidents))
+    .then((d) => {
+      state.incidents = d.incidents || [];
+      renderIncidents(state.incidents);
+      // The bars read the incident record, so they are drawn again once
+      // it lands: an outage we know about must never be left green.
+      renderComponents();
+    })
     .catch(() => {
       document.getElementById("incidents").innerHTML =
         '<p class="empty">The incident list could not be loaded.</p>';

@@ -17,9 +17,28 @@ Two jobs:
 ## Updating incidents
 
 Edit `incidents.json`, newest incident first, newest update first
-inside it. `status` is `ongoing` or `resolved`. Plain English, no
-internals: name what a user experiences and what we know, never
-architecture. Push to deploy.
+inside it. Plain English, no internals: name what a user experiences
+and what we know, never architecture. Push to deploy.
+
+Fields, and why the machine-readable ones matter:
+
+    date        the day it began, YYYY-MM-DD
+    title       one line a customer would recognise
+    status      investigating | identified | monitoring | resolved
+    severity    major (served nothing) | degraded (served, badly)
+    started     ISO 8601 UTC, e.g. 2026-08-21T12:55:00Z
+    resolved    same, omitted while the incident is open
+    components  which of website, api, reads, mcp were affected
+    updates     newest first, each with a human time and text
+
+`severity`, `started`, `resolved` and `components` are what the uptime
+bars are computed from, and they exist because the probe cannot report
+an outage it was not running for. Recording began on 21 August, hours
+after that day's outage ended, so the samples for that day hold no
+failures at all: without the incident record the page would have shown
+100 percent for a day we served nothing for nearly four hours. A day
+carrying an incident is always counted from the incident. Fill these
+fields in, or the page will quietly overstate the service.
 
 ## Deploy (owner, once)
 
