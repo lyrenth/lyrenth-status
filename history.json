@@ -1,0 +1,1 @@
+{"recording_since":"2026-08-21T22:39:11Z","samples":[{"t":"2026-08-21T22:39:11Z","r":{"website":[200,261],"api":[200,91],"reads":[200,70],"mcp":[405,65]},"docs":2488314001}],"days":{"2026-08-21":{"website":[1,0,261],"api":[1,0,91],"reads":[1,0,70],"mcp":[1,0,65]}},"updated":"2026-08-21T22:39:11Z","components":["website","api","reads","mcp"]}

@@ -4,128 +4,423 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lyrenth Status</title>
-<meta name="description" content="Live status of the Lyrenth API and website." />
+<meta name="description" content="Live status, uptime history and incident record for the Lyrenth API, website and index." />
+<link rel="alternate" type="application/rss+xml" title="Lyrenth status" href="rss.xml" />
 <style>
-  /* Deliberately self-contained: this page must not depend on anything
-     that can be down, including our own design system. */
+  /*
+    Self-contained on purpose: no framework, no font host, no build. A
+    status page must be the last thing that can break, so it borrows
+    nothing from the site it reports on.
+  */
   :root {
-    --bg: #0a0c0d; --panel: #101314; --line: #1e2426;
-    --text: #f5f7f7; --text-2: #b9c2c2; --text-3: #7d8888;
-    --ok: #2dd4bf; --warn: #e8b34b; --down: #e5645f; --unknown: #7d8888;
+    --bg:#0a0c0d; --panel:#101314; --panel-2:#14181b; --line:#1e2426;
+    --text:#f5f7f7; --text-2:#b9c2c2; --text-3:#7d8888; --text-4:#5c6666;
+    --ok:#2dd4bf; --warn:#e8b34b; --down:#e5645f; --none:#242b2d;
   }
   @media (prefers-color-scheme: light) {
     :root {
-      --bg: #f6f4f0; --panel: #ffffff; --line: #e2ddd4;
-      --text: #191d1d; --text-2: #3d4545; --text-3: #6d7676;
-      --ok: #0d7f70; --warn: #9a6b13; --down: #b3362f; --unknown: #6d7676;
+      --bg:#f6f4f0; --panel:#fff; --panel-2:#faf8f5; --line:#e2ddd4;
+      --text:#191d1d; --text-2:#3d4545; --text-3:#6d7676; --text-4:#8b9393;
+      --ok:#0d7f70; --warn:#9a6b13; --down:#b3362f; --none:#e6e1d8;
     }
   }
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing:border-box; margin:0; }
   body {
-    background: var(--bg); color: var(--text);
-    font: 15px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 48px 20px 80px;
+    background:var(--bg); color:var(--text);
+    font:15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding:44px 20px 80px;
   }
-  main { max-width: 680px; margin: 0 auto; }
-  .brand { font-weight: 650; letter-spacing: -0.01em; font-size: 18px; }
-  .brand a { color: var(--text-3); text-decoration: none; font-weight: 400; font-size: 13px; margin-left: 10px; }
-  h1 { font-size: 26px; letter-spacing: -0.02em; margin-top: 26px; font-weight: 600; }
-  .sub { color: var(--text-3); font-size: 13px; margin-top: 6px; }
-  .board { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
-  .svc {
-    display: flex; align-items: center; gap: 14px;
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 8px; padding: 14px 16px;
+  main { max-width:760px; margin:0 auto; }
+  a { color:var(--ok); }
+  .top { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .brand { font-weight:650; font-size:18px; letter-spacing:-0.01em; }
+  .top a { color:var(--text-3); text-decoration:none; font-size:13px; }
+  .mono { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .tnum { font-variant-numeric:tabular-nums; }
+
+  /* Banner: the one thing a visitor came for. */
+  .banner {
+    margin-top:26px; padding:24px 26px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--line);
+    display:flex; align-items:center; gap:16px;
   }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); flex: none; }
-  .svc b { font-weight: 550; }
-  .svc .state { margin-left: auto; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-  .ok .dot { background: var(--ok); } .ok .state { color: var(--ok); }
-  .down .dot { background: var(--down); } .down .state { color: var(--down); }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); font-weight: 550; margin: 44px 0 14px; }
-  .incident { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 18px 8px; margin-bottom: 12px; }
-  .incident h3 { font-size: 15.5px; font-weight: 600; line-height: 1.45; }
-  .tag { display: inline-block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--text-3); margin-bottom: 10px; }
-  .tag.ongoing { color: var(--down); border-color: var(--down); }
-  .tag.resolved { color: var(--ok); border-color: var(--ok); }
-  .upd { border-top: 1px solid var(--line); padding: 12px 0; }
-  .upd time { display: block; font-size: 12px; color: var(--text-3); margin-bottom: 3px; }
-  .upd p { color: var(--text-2); font-size: 14px; }
-  .empty { color: var(--text-3); font-size: 14px; }
-  footer { margin-top: 48px; color: var(--text-3); font-size: 12.5px; }
-  footer a { color: inherit; }
-  noscript p { color: var(--text-3); font-size: 13px; margin-top: 8px; }
+  .banner .beacon { width:14px; height:14px; border-radius:50%; background:var(--text-4); flex:none; }
+  .banner h1 { font-size:21px; font-weight:600; letter-spacing:-0.02em; line-height:1.3; }
+  .banner p { color:var(--text-3); font-size:13px; margin-top:3px; }
+  .banner.ok .beacon { background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent); }
+  .banner.warn .beacon { background:var(--warn); box-shadow:0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); }
+  .banner.down .beacon { background:var(--down); box-shadow:0 0 0 4px color-mix(in srgb, var(--down) 18%, transparent); }
+  .banner.ok h1 { color:var(--text); }
+
+  h2 {
+    font-size:11.5px; text-transform:uppercase; letter-spacing:0.14em;
+    color:var(--text-3); font-weight:600; margin:38px 0 12px;
+  }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  .comp { padding:16px 18px; border-bottom:1px solid var(--line); }
+  .comp:last-child { border-bottom:0; }
+  .comp-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--text-4); flex:none; }
+  .comp b { font-weight:550; }
+  .comp .where { color:var(--text-4); font-size:12.5px; }
+  .comp .state { margin-left:auto; font-size:12.5px; color:var(--text-3); }
+  .comp.ok .dot { background:var(--ok); } .comp.ok .state { color:var(--ok); }
+  .comp.warn .dot { background:var(--warn); } .comp.warn .state { color:var(--warn); }
+  .comp.down .dot { background:var(--down); } .comp.down .state { color:var(--down); }
+
+  /* Uptime bars: one slot per recorded day, oldest left. */
+  .bars { display:flex; gap:2px; margin-top:12px; height:26px; align-items:stretch; }
+  .bars i { flex:1 1 0; min-width:2px; border-radius:2px; background:var(--none); }
+  .bars i.ok { background:var(--ok); }
+  .bars i.part { background:var(--warn); }
+  .bars i.down { background:var(--down); }
+  .scale {
+    display:flex; justify-content:space-between; margin-top:6px;
+    font-size:11px; color:var(--text-4);
+  }
+  .scale b { color:var(--text-3); font-weight:550; }
+
+  .index-panel { padding:20px 18px; }
+  .big { font-size:30px; font-weight:600; letter-spacing:-0.02em; }
+  .index-panel .sub { color:var(--text-3); font-size:13px; margin-top:6px; }
+  .spark { margin-top:14px; display:block; width:100%; height:44px; }
+
+  .incident { padding:18px; border-bottom:1px solid var(--line); }
+  .incident:last-child { border-bottom:0; }
+  .tag {
+    display:inline-block; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase;
+    padding:2px 9px; border-radius:20px; border:1px solid var(--line); color:var(--text-3);
+  }
+  .tag.investigating, .tag.identified, .tag.monitoring, .tag.ongoing { color:var(--down); border-color:var(--down); }
+  .tag.maintenance { color:var(--warn); border-color:var(--warn); }
+  .tag.resolved { color:var(--ok); border-color:var(--ok); }
+  .incident h3 { font-size:15.5px; font-weight:600; margin-top:10px; line-height:1.45; }
+  .upd { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .upd time { display:block; font-size:11.5px; color:var(--text-4); margin-bottom:3px; }
+  .upd p { color:var(--text-2); font-size:14px; }
+  .empty { padding:18px; color:var(--text-3); font-size:14px; }
+  footer { margin-top:40px; color:var(--text-4); font-size:12.5px; line-height:1.7; }
+  footer a { color:var(--text-3); }
 </style>
 </head>
 <body>
 <main>
-  <div class="brand">Lyrenth <a href="https://www.lyrenth.com">lyrenth.com</a></div>
-  <h1>Service status</h1>
-  <p class="sub" id="checked">Checking live from your browser…</p>
-  <noscript><p>Live checks need JavaScript; the incident list below is current either way.</p></noscript>
+  <div class="top">
+    <span class="brand">Lyrenth</span>
+    <a href="https://www.lyrenth.com">lyrenth.com</a>
+    <a href="rss.xml" style="margin-left:auto">RSS</a>
+  </div>
 
-  <div class="board">
-    <div class="svc" id="svc-api"><span class="dot"></span><b>API</b> <span style="color:var(--text-3)">api.lyrenth.com</span><span class="state">checking…</span></div>
-    <div class="svc" id="svc-web"><span class="dot"></span><b>Website</b> <span style="color:var(--text-3)">www.lyrenth.com</span><span class="state">checking…</span></div>
+  <div class="banner" id="banner">
+    <span class="beacon"></span>
+    <div>
+      <h1 id="banner-title">Checking every service…</h1>
+      <p id="banner-sub">Probing from your browser, so this page cannot claim more than you can see.</p>
+    </div>
+  </div>
+
+  <h2>Components</h2>
+  <div class="card" id="components"></div>
+
+  <h2>Index pipeline</h2>
+  <div class="card index-panel" id="index-panel">
+    <div class="big tnum mono" id="docs">&nbsp;</div>
+    <div class="sub" id="docs-sub">Reading the live counter…</div>
+    <svg class="spark" id="spark" viewBox="0 0 600 44" preserveAspectRatio="none" aria-hidden="true"></svg>
   </div>
 
   <h2>Incidents</h2>
-  <div id="incidents"><p class="empty">Loading…</p></div>
+  <div class="card" id="incidents"><p class="empty">Loading…</p></div>
 
   <footer>
-    Live checks run from your own browser against the services directly,
-    so this page cannot pretend. Incident history is updated by the
-    Lyrenth team. Questions:
-    <a href="https://www.lyrenth.com/contact">lyrenth.com/contact</a>.
+    Component state is checked live from your own browser against each
+    service directly, so this page cannot report a service as healthy
+    when your network cannot reach it. Uptime bars and the response
+    history come from an independent probe that runs every 30 minutes
+    outside our infrastructure. Incident notes are written by hand.
+    <br />
+    Questions: <a href="https://www.lyrenth.com/contact">lyrenth.com/contact</a>
+    &middot; <a href="rss.xml">RSS feed</a>
   </footer>
 </main>
-<script>
-  // Reachability probes from the visitor's browser. no-cors keeps the
-  // response opaque, so this distinguishes "reachable" from "not
-  // reachable", which is exactly what a status page owes its reader;
-  // finer health detail comes from the incident notes.
-  async function probe(id, url) {
-    const el = document.getElementById(id);
-    const state = el.querySelector(".state");
-    const t0 = performance.now();
-    try {
-      await fetch(url, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(8000) });
-      el.classList.add("ok");
-      state.textContent = "reachable · " + Math.round(performance.now() - t0) + "ms";
-    } catch {
-      el.classList.add("down");
-      state.textContent = "unreachable";
-    }
-  }
-  probe("svc-api", "https://api.lyrenth.com/healthz");
-  probe("svc-web", "https://www.lyrenth.com/");
-  document.getElementById("checked").textContent =
-    "Checked live from your browser at " + new Date().toLocaleTimeString();
 
+<script>
+/*
+  Three sources, deliberately independent:
+    live     the visitor's own browser, checked now
+    history  raw.githubusercontent.com, recorded every 30 minutes from
+             outside our infrastructure
+    incidents  written by hand into incidents.json
+  If any one of them fails to load, the others still render.
+*/
+const HISTORY_URL =
+  "https://raw.githubusercontent.com/lyrenth/lyrenth-status/main/history.json";
+
+const COMPONENTS = [
+  {
+    id: "website",
+    name: "Website",
+    where: "www.lyrenth.com",
+    url: "https://www.lyrenth.com/",
+    cors: false,
+  },
+  {
+    id: "api",
+    name: "API",
+    where: "api.lyrenth.com",
+    url: "https://api.lyrenth.com/healthz",
+    cors: true,
+    // healthz answers 200 while the api serves without its database, and
+    // says so in the body. That state is "degraded", not "operational",
+    // and it is the distinction this page exists to draw.
+    degradedWhen: (body) => typeof body === "string" && body.includes("degraded"),
+  },
+  {
+    id: "reads",
+    name: "Index reads",
+    where: "the paid read path",
+    url: "https://api.lyrenth.com/v1/stats",
+    cors: true,
+    counter: true,
+  },
+  {
+    id: "mcp",
+    name: "MCP endpoint",
+    where: "api.lyrenth.com/mcp",
+    url: "https://api.lyrenth.com/mcp",
+    cors: false,
+  },
+];
+
+const fmt = new Intl.NumberFormat("en-US");
+const state = { live: {}, history: null };
+
+function el(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+
+/* ---------- live checks ---------- */
+
+async function checkLive(c) {
+  const started = performance.now();
+  try {
+    if (c.cors) {
+      // A real cross-origin read: we see the status code and the body,
+      // so "answering" and "answering 503" are different answers.
+      const res = await fetch(c.url, { cache: "no-store", signal: AbortSignal.timeout(9000) });
+      const ms = Math.round(performance.now() - started);
+      const body = await res.text().catch(() => "");
+      let level = res.ok ? "ok" : "down";
+      let word = res.ok ? "operational" : "not serving (" + res.status + ")";
+      if (res.ok && c.degradedWhen && c.degradedWhen(body)) {
+        level = "warn";
+        word = "degraded";
+      }
+      if (res.status === 503) word = "degraded (503)";
+      if (c.counter && res.ok) {
+        try { state.docs = JSON.parse(body).indexed_documents; } catch {}
+      }
+      return { level, word, ms };
+    }
+    // No CORS on this one: an opaque check proves reachability only, and
+    // the page says exactly that rather than implying more.
+    await fetch(c.url, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(9000) });
+    return { level: "ok", word: "reachable", ms: Math.round(performance.now() - started) };
+  } catch {
+    /*
+      A rejected fetch does not prove the service is down: a CORS grant
+      that is missing or was pulled would reject in exactly the same
+      way, and reporting an outage because of a response header would be
+      the worst lie this page could tell. So a failed cross-origin read
+      falls back to the opaque check, which needs no grant at all, and
+      only a failure of BOTH is called unreachable.
+    */
+    if (c.cors) {
+      try {
+        const t0 = performance.now();
+        await fetch(c.url, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(9000) });
+        return { level: "ok", word: "reachable", ms: Math.round(performance.now() - t0) };
+      } catch {}
+    }
+    return { level: "down", word: "unreachable", ms: null };
+  }
+}
+
+/* ---------- history ---------- */
+
+function dayClass(row) {
+  if (!row) return "";
+  const [checks, fails] = row;
+  if (!checks) return "";
+  if (!fails) return "ok";
+  return fails / checks > 0.25 ? "down" : "part";
+}
+
+function uptimePct(id) {
+  const days = state.history?.days || {};
+  let checks = 0, fails = 0;
+  for (const d of Object.values(days)) {
+    const row = d[id];
+    if (row) { checks += row[0]; fails += row[1]; }
+  }
+  if (!checks) return null;
+  return ((1 - fails / checks) * 100).toFixed(checks > 500 ? 2 : 1);
+}
+
+function renderBars(id) {
+  const days = state.history?.days;
+  if (!days || !Object.keys(days).length) {
+    return '<div class="scale"><span>Uptime history starts collecting with the next check.</span></div>';
+  }
+  const dates = Object.keys(days).sort();
+  const slots = dates.map((d) => `<i class="${dayClass(days[d][id])}" title="${d}"></i>`).join("");
+  const pct = uptimePct(id);
+  const since = dates[0];
+  return (
+    `<div class="bars">${slots}</div>` +
+    `<div class="scale"><span>${dates.length === 1 ? "today" : since}</span>` +
+    `<span>${pct === null ? "" : `<b>${pct}%</b> uptime, measured`}</span>` +
+    `<span>now</span></div>`
+  );
+}
+
+/* ---------- render ---------- */
+
+function renderComponents() {
+  const box = document.getElementById("components");
+  box.innerHTML = "";
+  for (const c of COMPONENTS) {
+    const live = state.live[c.id];
+    const level = live ? live.level : "";
+    const word = live ? live.word : "checking…";
+    const ms = live && live.ms !== null ? ` · ${live.ms}ms` : "";
+    box.appendChild(
+      el(
+        `<div class="comp ${level}">
+           <div class="comp-head">
+             <span class="dot"></span>
+             <b>${c.name}</b>
+             <span class="where mono">${c.where}</span>
+             <span class="state tnum">${word}${ms}</span>
+           </div>
+           ${renderBars(c.id)}
+         </div>`
+      )
+    );
+  }
+}
+
+function renderBanner() {
+  const levels = COMPONENTS.map((c) => state.live[c.id]?.level).filter(Boolean);
+  if (levels.length < COMPONENTS.length) return;
+  const banner = document.getElementById("banner");
+  const title = document.getElementById("banner-title");
+  const sub = document.getElementById("banner-sub");
+  const down = levels.filter((l) => l === "down").length;
+  const warn = levels.filter((l) => l === "warn").length;
+  let level = "ok", text = "All systems operational";
+  if (down) {
+    level = "down";
+    text = down === levels.length ? "All systems unreachable" : `${down} of ${levels.length} systems down`;
+  } else if (warn) {
+    level = "warn";
+    text = "Degraded: some requests are not being served";
+  }
+  banner.className = "banner " + level;
+  title.textContent = text;
+  const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  sub.textContent = `Checked from your browser at ${t}. This page runs outside our own infrastructure.`;
+}
+
+function renderIndex() {
+  const docsEl = document.getElementById("docs");
+  const subEl = document.getElementById("docs-sub");
+  const samples = state.history?.samples?.filter((s) => s.docs) || [];
+  const latest = state.docs || samples[samples.length - 1]?.docs;
+  if (!latest) {
+    docsEl.textContent = "";
+    subEl.textContent = "The live counter could not be read just now.";
+    return;
+  }
+  docsEl.textContent = fmt.format(latest);
+  // 48 samples back is 24 hours at the recorder's cadence.
+  const dayAgo = samples.length > 48 ? samples[samples.length - 49].docs : samples[0]?.docs;
+  const first = samples[0];
+  if (dayAgo && latest > dayAgo && samples.length > 4) {
+    const hours = (new Date(samples[samples.length - 1].t) - new Date(samples[Math.max(0, samples.length - 49)].t)) / 3.6e6;
+    subEl.textContent =
+      `documents indexed · ${fmt.format(latest - dayAgo)} added in the last ` +
+      `${hours >= 23 ? "24 hours" : Math.round(hours) + " hours"}`;
+  } else if (first) {
+    subEl.textContent = "documents indexed · growth appears once a day of samples is recorded";
+  } else {
+    subEl.textContent = "documents indexed";
+  }
+  renderSpark(samples.map((s) => s.docs));
+}
+
+function renderSpark(values) {
+  const svg = document.getElementById("spark");
+  if (!values || values.length < 3) { svg.innerHTML = ""; return; }
+  const W = 600, H = 44, P = 2;
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const step = (W - P * 2) / (values.length - 1);
+  const pts = values.map((v, i) => [P + i * step, H - P - ((v - min) / span) * (H - P * 2)]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  svg.innerHTML =
+    `<path d="${line} L ${W - P} ${H - P} L ${P} ${H - P} Z" fill="var(--ok)" opacity="0.14"></path>` +
+    `<path d="${line}" fill="none" stroke="var(--ok)" stroke-width="1.5" stroke-linejoin="round"></path>`;
+}
+
+function renderIncidents(incidents) {
+  const box = document.getElementById("incidents");
+  if (!incidents || !incidents.length) {
+    box.innerHTML = '<p class="empty">No incidents recorded.</p>';
+    return;
+  }
+  box.innerHTML = incidents
+    .map(
+      (i) =>
+        `<div class="incident">
+           <span class="tag ${i.status}">${i.status}</span>
+           <h3>${i.date}: ${i.title}</h3>
+           ${i.updates
+             .map((u) => `<div class="upd"><time>${u.time}</time><p>${u.text}</p></div>`)
+             .join("")}
+         </div>`
+    )
+    .join("");
+}
+
+/* ---------- boot ---------- */
+
+(async function () {
   fetch("incidents.json", { cache: "no-store" })
     .then((r) => r.json())
-    .then(({ incidents }) => {
-      const box = document.getElementById("incidents");
-      if (!incidents || incidents.length === 0) {
-        box.innerHTML = '<p class="empty">No incidents recorded.</p>';
-        return;
-      }
-      box.innerHTML = incidents
-        .map(
-          (i) =>
-            '<div class="incident"><span class="tag ' + i.status + '">' + i.status +
-            "</span><h3>" + i.date + ": " + i.title + "</h3>" +
-            i.updates
-              .map((u) => '<div class="upd"><time>' + u.time + "</time><p>" + u.text + "</p></div>")
-              .join("") +
-            "</div>",
-        )
-        .join("");
-    })
+    .then((d) => renderIncidents(d.incidents))
     .catch(() => {
       document.getElementById("incidents").innerHTML =
-        '<p class="empty">Incident list could not be loaded.</p>';
+        '<p class="empty">The incident list could not be loaded.</p>';
     });
+
+  fetch(HISTORY_URL, { cache: "no-store" })
+    .then((r) => r.json())
+    .then((h) => { state.history = h; renderComponents(); renderIndex(); })
+    .catch(() => {});
+
+  renderComponents();
+  await Promise.all(
+    COMPONENTS.map(async (c) => {
+      state.live[c.id] = await checkLive(c);
+      renderComponents();
+      renderBanner();
+    })
+  );
+  renderIndex();
+})();
 </script>
 </body>
 </html>

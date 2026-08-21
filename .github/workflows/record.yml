@@ -1,0 +1,47 @@
+name: record
+
+# Samples every component every 30 minutes and commits the result, which
+# is what gives the page real uptime bars and a response-time chart
+# instead of only a live reading.
+#
+# Why 30 minutes and not 5: Vercel counts every push to this repository
+# as a deployment and the free plan allows 100 a day, so a 5-minute
+# commit cadence would exhaust it by lunchtime. Alerting stays on the
+# 5-minute probe (probe.yml), which commits nothing. The page reads
+# history.json straight from raw.githubusercontent.com, so the data is
+# live even between deployments.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: record
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sample every component
+        run: python3 scripts/record.py
+      - name: Commit the sample
+        run: |
+          git config user.name "Lyrenth status"
+          git config user.email "hello@lyrenth.com"
+          git add history.json rss.xml
+          git diff --cached --quiet && exit 0
+          git commit -m "record: $(date -u +%Y-%m-%dT%H:%MZ)"
+          # A concurrent run (a manual dispatch during a scheduled one)
+          # would otherwise lose this sample to a rejected push.
+          for attempt in 1 2 3; do
+            git push && exit 0
+            git pull --rebase --autostash && sleep 3
+          done
+          exit 1
