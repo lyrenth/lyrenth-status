@@ -6,6 +6,10 @@
       "status": "ongoing",
       "updates": [
         {
+          "time": "2026-08-21 19:50 CEST",
+          "text": "Partial connectivity is returning: some of our infrastructure is reachable again, but the API is still unavailable while the provider's recovery continues. The website stays up and no data is affected. Next update when the API is back or the situation changes."
+        },
+        {
           "time": "2026-08-21 19:05 CEST",
           "text": "The provider's recovery attempts have not held: connectivity returned briefly for parts of the infrastructure and dropped again. All API services remain unavailable while their network engineers keep working. The website stays up and no data is affected."
         },
