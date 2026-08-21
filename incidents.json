@@ -1,0 +1,19 @@
+{
+  "incidents": [
+    {
+      "date": "2026-08-21",
+      "title": "API unavailable: network outage at our hosting provider's Vienna location",
+      "status": "ongoing",
+      "updates": [
+        {
+          "time": "2026-08-21 15:20 CEST",
+          "text": "Our hosting provider has confirmed a network outage at their Vienna location. All API endpoints (api.lyrenth.com) are unreachable. The website stays up. No data is affected: our database archives are stored with a separate provider and are intact."
+        },
+        {
+          "time": "2026-08-21 14:55 CEST",
+          "text": "We are investigating connectivity problems affecting the API."
+        }
+      ]
+    }
+  ]
+}

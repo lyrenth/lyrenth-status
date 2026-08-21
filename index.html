@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyrenth Status</title>
+<meta name="description" content="Live status of the Lyrenth API and website." />
+<style>
+  /* Deliberately self-contained: this page must not depend on anything
+     that can be down, including our own design system. */
+  :root {
+    --bg: #0a0c0d; --panel: #101314; --line: #1e2426;
+    --text: #f5f7f7; --text-2: #b9c2c2; --text-3: #7d8888;
+    --ok: #2dd4bf; --warn: #e8b34b; --down: #e5645f; --unknown: #7d8888;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f4f0; --panel: #ffffff; --line: #e2ddd4;
+      --text: #191d1d; --text-2: #3d4545; --text-3: #6d7676;
+      --ok: #0d7f70; --warn: #9a6b13; --down: #b3362f; --unknown: #6d7676;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 48px 20px 80px;
+  }
+  main { max-width: 680px; margin: 0 auto; }
+  .brand { font-weight: 650; letter-spacing: -0.01em; font-size: 18px; }
+  .brand a { color: var(--text-3); text-decoration: none; font-weight: 400; font-size: 13px; margin-left: 10px; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; margin-top: 26px; font-weight: 600; }
+  .sub { color: var(--text-3); font-size: 13px; margin-top: 6px; }
+  .board { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; }
+  .svc {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); flex: none; }
+  .svc b { font-weight: 550; }
+  .svc .state { margin-left: auto; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .ok .dot { background: var(--ok); } .ok .state { color: var(--ok); }
+  .down .dot { background: var(--down); } .down .state { color: var(--down); }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); font-weight: 550; margin: 44px 0 14px; }
+  .incident { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 18px 8px; margin-bottom: 12px; }
+  .incident h3 { font-size: 15.5px; font-weight: 600; line-height: 1.45; }
+  .tag { display: inline-block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--text-3); margin-bottom: 10px; }
+  .tag.ongoing { color: var(--down); border-color: var(--down); }
+  .tag.resolved { color: var(--ok); border-color: var(--ok); }
+  .upd { border-top: 1px solid var(--line); padding: 12px 0; }
+  .upd time { display: block; font-size: 12px; color: var(--text-3); margin-bottom: 3px; }
+  .upd p { color: var(--text-2); font-size: 14px; }
+  .empty { color: var(--text-3); font-size: 14px; }
+  footer { margin-top: 48px; color: var(--text-3); font-size: 12.5px; }
+  footer a { color: inherit; }
+  noscript p { color: var(--text-3); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Lyrenth <a href="https://www.lyrenth.com">lyrenth.com</a></div>
+  <h1>Service status</h1>
+  <p class="sub" id="checked">Checking live from your browser…</p>
+  <noscript><p>Live checks need JavaScript; the incident list below is current either way.</p></noscript>
+
+  <div class="board">
+    <div class="svc" id="svc-api"><span class="dot"></span><b>API</b> <span style="color:var(--text-3)">api.lyrenth.com</span><span class="state">checking…</span></div>
+    <div class="svc" id="svc-web"><span class="dot"></span><b>Website</b> <span style="color:var(--text-3)">www.lyrenth.com</span><span class="state">checking…</span></div>
+  </div>
+
+  <h2>Incidents</h2>
+  <div id="incidents"><p class="empty">Loading…</p></div>
+
+  <footer>
+    Live checks run from your own browser against the services directly,
+    so this page cannot pretend. Incident history is updated by the
+    Lyrenth team. Questions:
+    <a href="https://www.lyrenth.com/contact">lyrenth.com/contact</a>.
+  </footer>
+</main>
+<script>
+  // Reachability probes from the visitor's browser. no-cors keeps the
+  // response opaque, so this distinguishes "reachable" from "not
+  // reachable", which is exactly what a status page owes its reader;
+  // finer health detail comes from the incident notes.
+  async function probe(id, url) {
+    const el = document.getElementById(id);
+    const state = el.querySelector(".state");
+    const t0 = performance.now();
+    try {
+      await fetch(url, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(8000) });
+      el.classList.add("ok");
+      state.textContent = "reachable · " + Math.round(performance.now() - t0) + "ms";
+    } catch {
+      el.classList.add("down");
+      state.textContent = "unreachable";
+    }
+  }
+  probe("svc-api", "https://api.lyrenth.com/healthz");
+  probe("svc-web", "https://www.lyrenth.com/");
+  document.getElementById("checked").textContent =
+    "Checked live from your browser at " + new Date().toLocaleTimeString();
+
+  fetch("incidents.json", { cache: "no-store" })
+    .then((r) => r.json())
+    .then(({ incidents }) => {
+      const box = document.getElementById("incidents");
+      if (!incidents || incidents.length === 0) {
+        box.innerHTML = '<p class="empty">No incidents recorded.</p>';
+        return;
+      }
+      box.innerHTML = incidents
+        .map(
+          (i) =>
+            '<div class="incident"><span class="tag ' + i.status + '">' + i.status +
+            "</span><h3>" + i.date + ": " + i.title + "</h3>" +
+            i.updates
+              .map((u) => '<div class="upd"><time>' + u.time + "</time><p>" + u.text + "</p></div>")
+              .join("") +
+            "</div>",
+        )
+        .join("");
+    })
+    .catch(() => {
+      document.getElementById("incidents").innerHTML =
+        '<p class="empty">Incident list could not be loaded.</p>';
+    });
+</script>
+</body>
+</html>

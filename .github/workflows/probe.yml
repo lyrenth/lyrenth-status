@@ -1,0 +1,75 @@
+name: probe
+
+# The phone-alert prober. Every 5 minutes, from GitHub's
+# infrastructure (a third vendor, so it keeps working when either of
+# ours does not), it checks the API and the website and pushes a
+# notification through ntfy.sh when something is down.
+#
+# Setup, once:
+#   1. Repository secret NTFY_TOPIC: a long random string, e.g. the
+#      output of `openssl rand -hex 16`. The topic name IS the
+#      credential; anyone who knows it can read the alerts, so keep it
+#      random and private.
+#   2. Install the ntfy app (ntfy.sh, iOS or Android) and subscribe to
+#      that topic.
+#
+# Alert behavior: while something is down you get one message per
+# 5-minute run (an ongoing outage keeps pinging, which during a real
+# incident is a feature). Silence means up. Recovery is visible on
+# status.lyrenth.com; the prober also sends one "recovered" message
+# when a run succeeds right after a failed run, using the workflow's
+# previous conclusion as memory so no external state store is needed.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check endpoints
+        id: check
+        run: |
+          fails=""
+          code=$(curl -s -o /dev/null --max-time 10 -w "%{http_code}" https://api.lyrenth.com/healthz || echo 000)
+          [ "$code" = "200" ] || fails="$fails api.lyrenth.com/healthz=$code"
+          code=$(curl -s -o /dev/null --max-time 10 -w "%{http_code}" https://www.lyrenth.com/ || echo 000)
+          [ "$code" = "200" ] || fails="$fails www.lyrenth.com=$code"
+          echo "fails=$fails" >> "$GITHUB_OUTPUT"
+          [ -z "$fails" ]
+
+      - name: Alert on failure
+        if: failure() && steps.check.outputs.fails != ''
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "NTFY_TOPIC secret not set"; exit 0; }
+          curl -s -o /dev/null \
+            -H "Title: Lyrenth DOWN" \
+            -H "Priority: urgent" \
+            -H "Tags: rotating_light" \
+            -d "Down:${{ steps.check.outputs.fails }} (probe from GitHub, $(date -u +%H:%M) UTC)" \
+            "https://ntfy.sh/$NTFY_TOPIC"
+
+      - name: Recovery message
+        if: success()
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || exit 0
+          prev=$(gh run list --workflow probe --limit 2 --json conclusion -R "$GITHUB_REPOSITORY" \
+            | python3 -c "import json,sys; rs=json.load(sys.stdin); print(rs[1]['conclusion'] if len(rs)>1 else '')" 2>/dev/null || echo "")
+          if [ "$prev" = "failure" ]; then
+            curl -s -o /dev/null \
+              -H "Title: Lyrenth recovered" \
+              -H "Tags: white_check_mark" \
+              -d "All probes green again ($(date -u +%H:%M) UTC)" \
+              "https://ntfy.sh/$NTFY_TOPIC"
+          fi
