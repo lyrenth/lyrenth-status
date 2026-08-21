@@ -74,6 +74,25 @@
   .bars i.ok { background:var(--ok); }
   .bars i.part { background:var(--warn); }
   .bars i.down { background:var(--down); }
+  /*
+    A slot is a few pixels wide, so it gets a visible hover state of its
+    own: without one the pointer looks like it is over nothing.
+  */
+  .bars i:hover { outline:1px solid var(--text-2); outline-offset:1px; }
+  /*
+    Our own tooltip rather than the title attribute. A native tooltip
+    waits about a second before it appears, which on a row of 90 slots
+    means hunting rather than reading. This one shows on contact.
+  */
+  #tip {
+    position:fixed; z-index:20; pointer-events:none; opacity:0;
+    transform:translate(-50%, -100%);
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text-2);
+    padding:6px 10px; border-radius:7px; font-size:12.5px; white-space:nowrap;
+    box-shadow:0 6px 20px rgba(0,0,0,0.35);
+  }
+  #tip.on { opacity:1; }
+  @media (prefers-reduced-motion: no-preference) { #tip { transition:opacity .07s linear; } }
   .scale {
     display:flex; justify-content:space-between; margin-top:6px;
     font-size:11px; color:var(--text-4);
@@ -147,6 +166,7 @@
     &middot; <a href="rss.xml">RSS feed</a>
   </footer>
 </main>
+<div id="tip" role="status" aria-live="polite"></div>
 
 <script>
 /*
@@ -370,7 +390,7 @@ function renderBars(componentId) {
           : f.down
             ? d + ": " + Math.round(f.down) + " min down of " + f.window + " measured"
             : d + ": no failures in " + f.window + " min measured";
-      return `<i class="${dayClass(f)}" title="${label}"></i>`;
+      return `<i class="${dayClass(f)}" data-label="${label}" aria-label="${label}"></i>`;
     })
     .join("");
   const pct = uptimePct(componentId);
@@ -491,6 +511,32 @@ function renderIncidents(incidents) {
     )
     .join("");
 }
+
+/* ---------- tooltip ---------- */
+
+/*
+  Delegated from the document, so it keeps working through every
+  re-render of the component rows, and positioned per slot so a tooltip
+  near either end stays on screen instead of running off it.
+*/
+(function () {
+  const tip = document.getElementById("tip");
+  document.addEventListener("mouseover", (e) => {
+    const slot = e.target.closest?.("[data-label]");
+    if (!slot) return;
+    tip.textContent = slot.getAttribute("data-label");
+    tip.classList.add("on");
+    const r = slot.getBoundingClientRect();
+    // Measure after the text is in, then clamp to the viewport.
+    const half = tip.offsetWidth / 2;
+    const x = Math.min(Math.max(r.left + r.width / 2, half + 8), window.innerWidth - half - 8);
+    tip.style.left = x + "px";
+    tip.style.top = r.top - 8 + "px";
+  });
+  document.addEventListener("mouseout", (e) => {
+    if (e.target.closest?.("[data-label]")) tip.classList.remove("on");
+  });
+})();
 
 /* ---------- boot ---------- */
 
