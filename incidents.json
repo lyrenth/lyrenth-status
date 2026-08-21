@@ -6,6 +6,10 @@
       "status": "ongoing",
       "updates": [
         {
+          "time": "2026-08-21 19:05 CEST",
+          "text": "The provider's recovery attempts have not held: connectivity returned briefly for parts of the infrastructure and dropped again. All API services remain unavailable while their network engineers keep working. The website stays up and no data is affected."
+        },
+        {
           "time": "2026-08-21 15:20 CEST",
           "text": "Our hosting provider has confirmed a network outage at their Vienna location. All API endpoints (api.lyrenth.com) are unreachable. The website stays up. No data is affected: our database archives are stored with a separate provider and are intact."
         },
