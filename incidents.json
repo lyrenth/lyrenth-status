@@ -3,8 +3,12 @@
     {
       "date": "2026-08-21",
       "title": "API unavailable: network outage at our hosting provider's Vienna location",
-      "status": "ongoing",
+      "status": "resolved",
       "updates": [
+        {
+          "time": "2026-08-21 18:41 CEST",
+          "text": "Resolved. The provider restored their Vienna network and all services recovered: the API is fully serving, reads are answering from the index, and the crawler resumed. No data was lost or affected at any point. Total API impact was several hours of unavailability; during the later part of the outage the API answered with clear errors stating that requests were not processed and not billed, and that remains true for the whole incident: no request during the outage was billed."
+        },
         {
           "time": "2026-08-21 19:50 CEST",
           "text": "Partial connectivity is returning: some of our infrastructure is reachable again, but the API is still unavailable while the provider's recovery continues. The website stays up and no data is affected. Next update when the API is back or the situation changes."
