@@ -196,6 +196,16 @@
 const HISTORY_URL =
   "https://raw.githubusercontent.com/lyrenth/lyrenth-status/main/history.json";
 
+/*
+  The day the service started serving traffic, from the request log.
+  A constant in the page rather than a field in history.json, for two
+  reasons: it is a fact about us that changes never, so it does not
+  belong in a file rewritten every thirty minutes; and history.json is
+  read through a CDN that can serve a stale copy for minutes, which
+  would leave the bars looking like a void until the cache turned over.
+*/
+const OPERATING_SINCE = "2026-05-24";
+
 const COMPONENTS = [
   {
     id: "website",
@@ -385,7 +395,7 @@ function dayFacts(dateStr, componentId) {
   if (!row || !row[0]) {
     // No samples. If the service was already running that day, say so
     // rather than drawing a void, but never count it as measured uptime.
-    const since = state.history?.operating_since;
+    const since = OPERATING_SINCE;
     const from = state.history?.recording_since?.slice(0, 10);
     if (since && dateStr >= since && (!from || dateStr < from)) {
       return { down: 0, window: 0, preMonitoring: true };
