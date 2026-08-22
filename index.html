@@ -438,8 +438,10 @@ function renderBars(componentId) {
       // claiming a clean day we did not observe is the one thing these
       // bars must not do.
       // Today is partial by definition, so its measured window is not a
-      // gap and saying so would be noise. A PAST day we only watched
-      // part of is a real gap and keeps its qualifier.
+      // gap and saying so would be noise. It reads "no failures today"
+      // rather than "so far today", which sounds like we are waiting for
+      // one. A PAST day we only watched part of is a real gap and keeps
+      // its qualifier.
       const isToday = d === new Date().toISOString().slice(0, 10);
       const whole = f && (isToday || f.window >= DAY_MINUTES - SAMPLE_MINUTES);
       const label = !f
@@ -450,7 +452,7 @@ function renderBars(componentId) {
             ? d + ": " + humanMinutes(f.down) + " down, " +
               (whole ? "measured all day" : "of " + humanMinutes(f.window) + " measured")
             : whole
-              ? d + (isToday ? ": no failures so far today" : ": no failures")
+              ? d + (isToday ? ": no failures today" : ": no failures")
               : d + ": no failures in the " + humanMinutes(f.window) + " measured";
       return `<i class="${dayClass(f)}" data-label="${label}" aria-label="${label}"></i>`;
     })
