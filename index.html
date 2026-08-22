@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lyrenth Status</title>
 <meta name="description" content="Live status, uptime history and incident record for the Lyrenth API, website and index." />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="favicon.png" sizes="any" />
+<link rel="apple-touch-icon" href="favicon.png" />
 <link rel="alternate" type="application/rss+xml" title="Lyrenth status" href="rss.xml" />
 <style>
   /*
@@ -325,6 +328,20 @@ function recordedState(c) {
   the percentage entirely, rather than assumed good.
 */
 const SAMPLE_MINUTES = 30;
+
+/*
+  Durations in words. The bar's tooltip used to print raw minutes, so a
+  clean day read "no failures in 450 min measured", which is 15 checks
+  times the 30 minute cadence and means nothing to anyone reading it.
+*/
+function humanMinutes(min) {
+  const m = Math.round(min);
+  if (m < 60) return m + (m === 1 ? " minute" : " minutes");
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  const hours = h + (h === 1 ? " hour" : " hours");
+  return rest ? hours + " " + rest + " min" : hours;
+}
 const DAY_MINUTES = 1440;
 
 function incidentDowntime(dateStr, componentId) {
@@ -416,13 +433,25 @@ function renderBars(componentId) {
   const slots = dates
     .map((d) => {
       const f = dayFacts(d, componentId);
+      // A day we watched end to end just says "no failures". A day we
+      // only watched part of says how much of it we watched, because
+      // claiming a clean day we did not observe is the one thing these
+      // bars must not do.
+      // Today is partial by definition, so its measured window is not a
+      // gap and saying so would be noise. A PAST day we only watched
+      // part of is a real gap and keeps its qualifier.
+      const isToday = d === new Date().toISOString().slice(0, 10);
+      const whole = f && (isToday || f.window >= DAY_MINUTES - SAMPLE_MINUTES);
       const label = !f
         ? d + ": no data"
         : f.incident
-          ? d + ": incident, " + Math.round(f.down) + " min down"
+          ? d + ": incident, " + humanMinutes(f.down) + " down"
           : f.down
-            ? d + ": " + Math.round(f.down) + " min down of " + f.window + " measured"
-            : d + ": no failures in " + f.window + " min measured";
+            ? d + ": " + humanMinutes(f.down) + " down, " +
+              (whole ? "measured all day" : "of " + humanMinutes(f.window) + " measured")
+            : whole
+              ? d + (isToday ? ": no failures so far today" : ": no failures")
+              : d + ": no failures in the " + humanMinutes(f.window) + " measured";
       return `<i class="${dayClass(f)}" data-label="${label}" aria-label="${label}"></i>`;
     })
     .join("");
