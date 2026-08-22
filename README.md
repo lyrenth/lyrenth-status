@@ -28,6 +28,12 @@ Fields, and why the machine-readable ones matter:
     severity    major (served nothing) | degraded (served, badly)
     started     ISO 8601 UTC, e.g. 2026-08-21T12:55:00Z
     resolved    same, omitted while the incident is open
+    windows     optional, for an incident that stopped and came back:
+                a list of {started, resolved} pairs. The bars add up
+                the windows, not the span, so a fault that recurred
+                after two good hours is not published as two hours of
+                downtime. Leave it out and the started/resolved pair
+                is the single window.
     components  which of website, api, reads, mcp were affected
     updates     newest first, each with a human time and text
 
@@ -39,6 +45,14 @@ failures at all: without the incident record the page would have shown
 100 percent for a day we served nothing for nearly four hours. A day
 carrying an incident is always counted from the incident. Fill these
 fields in, or the page will quietly overstate the service.
+
+An incident from before the prober existed is drawn on the bar but is
+left out of the percentage, and the label says how many days the
+percentage was measured over. That is deliberate. Counting the one bad
+unmonitored day while ignoring the eighty-seven good ones either side of
+it would not be a measurement, it would be a choice of which days to
+remember. The history shows everything we know; the number reports only
+what we watched.
 
 ## Deploy (owner, once)
 

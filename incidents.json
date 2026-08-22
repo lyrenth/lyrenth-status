@@ -34,6 +34,43 @@
           "text": "We are investigating connectivity problems affecting the API."
         }
       ]
+    },
+    {
+      "date": "2026-08-05",
+      "title": "API briefly unavailable twice during maintenance",
+      "status": "resolved",
+      "severity": "major",
+      "started": "2026-08-05T13:42:00Z",
+      "resolved": "2026-08-05T15:54:00Z",
+      "windows": [
+        {
+          "started": "2026-08-05T13:42:00Z",
+          "resolved": "2026-08-05T13:55:00Z"
+        },
+        {
+          "started": "2026-08-05T15:48:00Z",
+          "resolved": "2026-08-05T15:54:00Z"
+        }
+      ],
+      "components": [
+        "api",
+        "reads",
+        "mcp"
+      ],
+      "updates": [
+        {
+          "time": "2026-08-22",
+          "text": "Added to this history after the fact. This status page was published on 21 August, so this incident happened before the page existed; we are recording it here rather than letting the history begin on the day we started publishing. The times come from our own request records and are accurate to a few minutes. Because we were not yet measuring uptime independently on that day, this day is shown in the history but is not counted in the uptime percentage above."
+        },
+        {
+          "time": "2026-08-05 17:54 CEST",
+          "text": "Resolved. A second, related fault appeared about two hours after the first fix and made the API unavailable again for about 6 minutes. Both are now corrected and we have added an automatic check that warns us long before this condition can return. Total time unavailable on this day was about 19 minutes across the two interruptions. No data was lost or affected, and no request during either interruption was billed."
+        },
+        {
+          "time": "2026-08-05 15:42 CEST",
+          "text": "The API stopped answering for about 13 minutes during routine maintenance. Reads and the MCP endpoint were unavailable for the same period. The website stayed up, although signed-in pages could not load live data while the API was down. The cause was an internal limit that had been reached as our systems grew, and it has been raised."
+        }
+      ]
     }
   ]
 }

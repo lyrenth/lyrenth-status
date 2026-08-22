@@ -364,46 +364,100 @@ function humanMinutes(min) {
 }
 const DAY_MINUTES = 1440;
 
+/*
+  One incident can be more than one interruption: a fault fixed, and the
+  same fault returning hours later. Such an incident carries a "windows"
+  array and the started/resolved pair spans the lot; without one the
+  pair is the single window. Read the windows, never the span, or a
+  fifteen minute fault that recurred after lunch is published as two
+  hours of downtime.
+*/
+function incidentWindows(inc) {
+  const raw = Array.isArray(inc.windows) && inc.windows.length ? inc.windows : [inc];
+  return raw
+    .map((w) => [Date.parse(w.started), w.resolved ? Date.parse(w.resolved) : Date.now()])
+    .filter(([from, to]) => !isNaN(from) && !isNaN(to) && to > from);
+}
+
 function incidentDowntime(dateStr, componentId) {
   // Minutes of that UTC day the component was down, per the incidents.
+  // Windows are merged before they are added up, so two records that
+  // overlap cannot count the same minute twice.
   const dayStart = Date.parse(dateStr + "T00:00:00Z");
   const dayEnd = dayStart + DAY_MINUTES * 60000;
-  let worst = 0;
+  const spans = [];
   let severity = null;
   for (const inc of state.incidents || []) {
     const affects = inc.components ? inc.components.includes(componentId) : true;
-    if (!affects || !inc.started) continue;
-    const from = Date.parse(inc.started);
-    const to = inc.resolved ? Date.parse(inc.resolved) : Date.now();
-    if (isNaN(from) || isNaN(to)) continue;
-    const overlap = Math.min(to, dayEnd) - Math.max(from, dayStart);
-    if (overlap > 0) {
-      worst = Math.max(worst, overlap / 60000);
+    if (!affects) continue;
+    for (const [from, to] of incidentWindows(inc)) {
+      const start = Math.max(from, dayStart);
+      const end = Math.min(to, dayEnd);
+      if (end <= start) continue;
+      spans.push([start, end]);
       if (inc.severity === "major" || !severity) severity = inc.severity || "major";
     }
   }
-  return { minutes: worst, severity };
+  if (!spans.length) return { minutes: 0, severity: null };
+  spans.sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let [openStart, openEnd] = spans[0];
+  for (const [start, end] of spans.slice(1)) {
+    if (start > openEnd) {
+      total += openEnd - openStart;
+      openStart = start;
+      openEnd = end;
+    } else if (end > openEnd) {
+      openEnd = end;
+    }
+  }
+  total += openEnd - openStart;
+  return { minutes: total / 60000, severity };
 }
 
-// Returns {down, window} in minutes, or null when the day is unknown.
+// True for a day that ended before the 5-minute prober started running.
+function beforeMonitoring(dateStr) {
+  const from = state.history?.recording_since?.slice(0, 10);
+  return !!from && dateStr < from;
+}
+
+/*
+  Returns {down, window, counted} in minutes, or null when the day is
+  unknown. "counted" is what the uptime percentage adds up, and it is
+  only ever a day the prober actually watched. An incident from before
+  monitoring began is drawn on the bar, because it happened and hiding
+  it would be a lie, but it is left out of the percentage: counting the
+  one bad unwatched day while ignoring eighty-seven good unwatched ones
+  is not a measurement, it is a choice of which days to remember.
+*/
 function dayFacts(dateStr, componentId) {
   const hit = incidentDowntime(dateStr, componentId);
   if (hit.minutes > 0) {
-    return { down: hit.minutes, window: DAY_MINUTES, incident: true, severity: hit.severity };
+    return {
+      down: hit.minutes,
+      window: DAY_MINUTES,
+      incident: true,
+      severity: hit.severity,
+      counted: !beforeMonitoring(dateStr),
+    };
   }
   const row = state.history?.days?.[dateStr]?.[componentId];
   if (!row || !row[0]) {
     // No samples. If the service was already running that day, say so
     // rather than drawing a void, but never count it as measured uptime.
     const since = OPERATING_SINCE;
-    const from = state.history?.recording_since?.slice(0, 10);
-    if (since && dateStr >= since && (!from || dateStr < from)) {
-      return { down: 0, window: 0, preMonitoring: true };
+    if (since && dateStr >= since && beforeMonitoring(dateStr)) {
+      return { down: 0, window: 0, preMonitoring: true, counted: false };
     }
     return null;
   }
   const [checks, fails] = row;
-  return { down: fails * SAMPLE_MINUTES, window: checks * SAMPLE_MINUTES, incident: false };
+  return {
+    down: fails * SAMPLE_MINUTES,
+    window: checks * SAMPLE_MINUTES,
+    incident: false,
+    counted: true,
+  };
 }
 
 function dayClass(facts) {
@@ -442,16 +496,19 @@ function windowDates() {
   return out;
 }
 
-function uptimePct(componentId) {
-  let down = 0, window = 0;
+// {pct, days}: the percentage and the number of days behind it, so the
+// label can never claim more days than the sum was taken over.
+function uptimeMeasured(componentId) {
+  let down = 0, window = 0, days = 0;
   for (const d of knownDates()) {
     const f = dayFacts(d, componentId);
-    if (!f || f.preMonitoring) continue; // never measured, never counted
+    if (!f || !f.counted) continue; // never measured, never counted
     down += f.down;
     window += f.window;
+    days++;
   }
-  if (!window) return null;
-  return ((1 - down / window) * 100).toFixed(2);
+  if (!window) return { pct: null, days: 0 };
+  return { pct: ((1 - down / window) * 100).toFixed(2), days };
 }
 
 function renderBars(componentId) {
@@ -489,8 +546,8 @@ function renderBars(componentId) {
       return `<i class="${dayClass(f)}" data-label="${label}" aria-label="${label}"></i>`;
     })
     .join("");
-  const pct = uptimePct(componentId);
-  const measured = known.length === 1 ? "1 day recorded" : known.length + " days recorded";
+  const { pct, days } = uptimeMeasured(componentId);
+  const measured = days === 1 ? "1 day measured" : days + " days measured";
   return (
     `<div class="bars">${slots}</div>` +
     `<div class="scale"><span>90 days</span>` +
