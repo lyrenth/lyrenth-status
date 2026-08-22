@@ -78,6 +78,16 @@
   .bars i.part { background:var(--warn); }
   .bars i.down { background:var(--down); }
   /*
+    Days the service was serving but no independent probe was running.
+    Drawn as a faint version of the healthy colour rather than the "no
+    data" grey: a wall of grey behind yesterday reads as though the
+    company began yesterday, and it did not. Deliberately NOT full
+    green, because our own request log cannot see an outage (during one,
+    nothing reaches it to be logged), so these days are evidence of
+    operation and not proof of uptime.
+  */
+  .bars i.pre { background:var(--ok); opacity:0.34; }
+  /*
     A slot is a few pixels wide, so it gets a visible hover state of its
     own: without one the pointer looks like it is over nothing.
   */
@@ -372,12 +382,22 @@ function dayFacts(dateStr, componentId) {
     return { down: hit.minutes, window: DAY_MINUTES, incident: true, severity: hit.severity };
   }
   const row = state.history?.days?.[dateStr]?.[componentId];
-  if (!row || !row[0]) return null;
+  if (!row || !row[0]) {
+    // No samples. If the service was already running that day, say so
+    // rather than drawing a void, but never count it as measured uptime.
+    const since = state.history?.operating_since;
+    const from = state.history?.recording_since?.slice(0, 10);
+    if (since && dateStr >= since && (!from || dateStr < from)) {
+      return { down: 0, window: 0, preMonitoring: true };
+    }
+    return null;
+  }
   const [checks, fails] = row;
   return { down: fails * SAMPLE_MINUTES, window: checks * SAMPLE_MINUTES, incident: false };
 }
 
 function dayClass(facts) {
+  if (facts && facts.preMonitoring) return "pre";
   if (!facts) return "";
   if (!facts.down) return "ok";
   // A day carrying a major incident is red however small a slice of the
@@ -416,7 +436,7 @@ function uptimePct(componentId) {
   let down = 0, window = 0;
   for (const d of knownDates()) {
     const f = dayFacts(d, componentId);
-    if (!f) continue;
+    if (!f || f.preMonitoring) continue; // never measured, never counted
     down += f.down;
     window += f.window;
   }
@@ -446,6 +466,8 @@ function renderBars(componentId) {
       const whole = f && (isToday || f.window >= DAY_MINUTES - SAMPLE_MINUTES);
       const label = !f
         ? d + ": no data"
+        : f.preMonitoring
+        ? d + ": serving, before independent monitoring began"
         : f.incident
           ? d + ": incident, " + humanMinutes(f.down) + " down"
           : f.down
